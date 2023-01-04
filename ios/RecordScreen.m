@@ -60,6 +60,23 @@ RCT_EXPORT_METHOD(setup: (NSDictionary *)config)
     self.enableMic = [RCTConvert BOOL: config[@"mic"]];
 }
 
+RCT_EXPORT_METHOD(requestPermissions)
+{
+    AVAuthorizationStatus authStatus = [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeVideo];
+    if(authStatus == AVAuthorizationStatusNotDetermined)
+    {
+        NSLog(@"%@", @"Camera access not determined. Ask for permission.");
+
+        [AVCaptureDevice requestAccessForMediaType:AVMediaTypeVideo completionHandler:^(BOOL granted) {
+            if(granted){
+                NSLog(@"Granted access to %@", AVMediaTypeVideo);
+            } else {
+                NSLog(@"Not granted access to %@", AVMediaTypeVideo);
+            }
+        }];
+    }
+}
+
 RCT_REMAP_METHOD(startRecording, resolve:(RCTPromiseResolveBlock)resolve rejecte:(RCTPromiseRejectBlock)reject)
 {
     self.screenRecorder = [RPScreenRecorder sharedRecorder];
@@ -118,10 +135,13 @@ RCT_REMAP_METHOD(startRecording, resolve:(RCTPromiseResolveBlock)resolve rejecte
     if (self.enableMic) {
         self.screenRecorder.microphoneEnabled = YES;
     }
-    
-    [AVCaptureDevice requestAccessForMediaType:AVMediaTypeVideo completionHandler:^(BOOL granted) {
+
+
+    AVAuthorizationStatus authStatus = [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeVideo];
+    if(authStatus == AVAuthorizationStatusAuthorized)
+    {
+        NSLog(@"%@", @"You have camera access");
         dispatch_async(dispatch_get_main_queue(), ^{
-            if (granted) {
                 if (@available(iOS 11.0, *)) {
                     [self.screenRecorder startCaptureWithHandler:^(CMSampleBufferRef sampleBuffer, RPSampleBufferType bufferType, NSError* error) {
                         if (CMSampleBufferDataIsReady(sampleBuffer)) {
@@ -171,12 +191,93 @@ RCT_REMAP_METHOD(startRecording, resolve:(RCTPromiseResolveBlock)resolve rejecte
                 } else {
                     // Fallback on earlier versions
                 }
+            
+        })
+    }
+    else if(authStatus == AVAuthorizationStatusDenied)
+    {
+        NSLog(@"%@", @"Denied camera access");
+
+        [AVCaptureDevice requestAccessForMediaType:AVMediaTypeVideo completionHandler:^(BOOL granted) {
+            if(granted){
+                NSLog(@"Granted access to %@", AVMediaTypeVideo);
             } else {
-                NSError* err = nil;
-                reject(0, @"Permission denied", err);
+                NSLog(@"Not granted access to %@", AVMediaTypeVideo);
             }
-        });
-    }];
+        }];
+    }
+    else if(authStatus == AVAuthorizationStatusRestricted)
+    {
+        NSLog(@"%@", @"Restricted, normally won't happen");
+    }
+    else if(authStatus == AVAuthorizationStatusNotDetermined)
+    {
+        NSLog(@"%@", @"Camera access not determined. Ask for permission.");
+
+        [AVCaptureDevice requestAccessForMediaType:AVMediaTypeVideo completionHandler:^(BOOL granted) {
+            if(granted){
+                NSLog(@"Granted access to %@", AVMediaTypeVideo);
+                        dispatch_async(dispatch_get_main_queue(), ^{
+                if (@available(iOS 11.0, *)) {
+                    [self.screenRecorder startCaptureWithHandler:^(CMSampleBufferRef sampleBuffer, RPSampleBufferType bufferType, NSError* error) {
+                        if (CMSampleBufferDataIsReady(sampleBuffer)) {
+                            if (self.writer.status == AVAssetWriterStatusUnknown && !self.encounteredFirstBuffer && bufferType == RPSampleBufferTypeVideo) {
+                                self.encounteredFirstBuffer = YES;
+                                NSLog(@"First buffer video");
+                                [self.writer startWriting];
+                                [self.writer startSessionAtSourceTime:CMSampleBufferGetPresentationTimeStamp(sampleBuffer)];
+                            } else if (self.writer.status == AVAssetWriterStatusFailed) {
+                                
+                            }
+                            
+                            if (self.writer.status == AVAssetWriterStatusWriting) {
+                                switch (bufferType) {
+                                    case RPSampleBufferTypeVideo:
+                                        if (self.videoInput.isReadyForMoreMediaData) {
+                                            [self.videoInput appendSampleBuffer:sampleBuffer];
+                                        }
+                                        break;
+                                    case RPSampleBufferTypeAudioApp:
+                                        if (self.audioInput.isReadyForMoreMediaData) {
+                                            if(self.enableMic){
+                                                [self.audioInput appendSampleBuffer:sampleBuffer];
+                                            } else {
+                                                [self muteAudioInBuffer:sampleBuffer];
+                                            }
+                                        }
+                                        break;
+                                    case RPSampleBufferTypeAudioMic:
+                                        if (self.micInput.isReadyForMoreMediaData) {
+                                            if(self.enableMic){
+                                                [self.micInput appendSampleBuffer:sampleBuffer];
+                                            } else {
+                                                [self muteAudioInBuffer:sampleBuffer];
+                                            }
+                                        }
+                                        break;
+                                    default:
+                                        break;
+                                }
+                            }
+                        }
+                    } completionHandler:^(NSError* error) {
+                        NSLog(@"startCapture: %@", error);
+                        resolve(@"started");
+                    }];
+                } else {
+                    // Fallback on earlier versions
+                }
+            
+        })
+            } else {
+                NSLog(@"Not granted access to %@", AVMediaTypeVideo);
+            }
+        }];
+    }
+    else
+    {
+        NSLog(@"%@", @"Camera access unknown error.");
+    }
 
     if (self.enableMic) {
         self.screenRecorder.microphoneEnabled = YES;

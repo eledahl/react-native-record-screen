@@ -23,6 +23,7 @@ export type RecordingResponse =
   | RecordingErrorResponse;
 
 type RecordScreenType = {
+  requestPermissions(): void;
   setup(config: RecordScreenConfigType): void;
   startRecording(
     config?: RecordScreenConfigType
@@ -49,6 +50,10 @@ class ReactNativeRecordScreenClass {
       config
     );
     RS.setup(conf);
+  }
+
+  requestPermissions(): void {
+    RS.requestPermissions();
   }
 
   async startRecording(
