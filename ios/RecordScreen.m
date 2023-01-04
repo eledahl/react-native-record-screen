@@ -192,7 +192,7 @@ RCT_REMAP_METHOD(startRecording, resolve:(RCTPromiseResolveBlock)resolve rejecte
                     // Fallback on earlier versions
                 }
             
-        })
+        });
     }
     else if(authStatus == AVAuthorizationStatusDenied)
     {
@@ -268,7 +268,7 @@ RCT_REMAP_METHOD(startRecording, resolve:(RCTPromiseResolveBlock)resolve rejecte
                     // Fallback on earlier versions
                 }
             
-        })
+        });
             } else {
                 NSLog(@"Not granted access to %@", AVMediaTypeVideo);
             }
